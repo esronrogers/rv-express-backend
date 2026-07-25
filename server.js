@@ -8,9 +8,11 @@ app.use(cors());
 app.use(express.json());
 
 // ================================================================
-// CONFIGURAÇÃO DO MERCADO PAGO (VERSÃO CORRETA)
+// CONFIGURAÇÃO DO MERCADO PAGO (VERSÃO COMPATÍVEL)
 // ================================================================
-mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+mercadopago.configure({
+    access_token: process.env.MP_ACCESS_TOKEN
+});
 
 // ================================================================
 // ENDPOINT PARA CRIAR PAGAMENTO
@@ -28,7 +30,7 @@ app.post("/criar-pagamento", async (req, res) => {
             }
         });
 
-        res.json(pagamento.response);
+        res.json(pagamento.body);
     } catch (erro) {
         console.error("❌ Erro:", erro.message);
         res.status(500).json({
@@ -44,8 +46,7 @@ app.post("/criar-pagamento", async (req, res) => {
 app.get("/", (req, res) => {
     res.json({ 
         mensagem: "🚀 RV Express Backend funcionando!",
-        status: "online",
-        data: new Date().toLocaleString()
+        status: "online"
     });
 });
 
@@ -55,5 +56,4 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log("📱 Aguardando pagamentos...");
 });
