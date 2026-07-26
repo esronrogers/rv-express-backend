@@ -6,31 +6,20 @@ const { MercadoPagoConfig, Payment } = require("mercadopago"); // SDK v2
 const { calcularTotalSeguro, PRODUTOS } = require("./produtos");
 
 const app = express();
-app.use(cors()); // em produção, troque por: cors({ origin: "https://SEU-APP.com" })
+app.use(cors());
 app.use(express.json());
 
-// ================================================================
-// VALIDAÇÃO DO AMBIENTE — falha rápido e com mensagem clara
-// se esquecer de configurar o token, em vez de quebrar em silêncio
-// na primeira compra.
-// ================================================================
 if (!process.env.MP_ACCESS_TOKEN) {
     console.error("❌ ERRO FATAL: variável de ambiente MP_ACCESS_TOKEN não definida.");
     console.error("   Configure-a nas variáveis de ambiente do seu serviço (Render, etc).");
     process.exit(1);
 }
 
-// ================================================================
-// CONFIGURAÇÃO DO MERCADO PAGO (SDK v2)
-// ================================================================
 const client = new MercadoPagoConfig({
     accessToken: process.env.MP_ACCESS_TOKEN,
 });
 const paymentClient = new Payment(client);
 
-// ================================================================
-// ENDPOINT PARA CRIAR PAGAMENTO COM CARTÃO
-// ================================================================
 app.post("/criar-pagamento", async (req, res) => {
     try {
         const { token, payment_method_id, email, cpf, nome, itens } = req.body;
@@ -41,9 +30,6 @@ app.post("/criar-pagamento", async (req, res) => {
             return res.status(400).json({ erro: "Token do cartão não informado" });
         }
 
-        // TOTAL SEMPRE CALCULADO NO SERVIDOR — nunca confia no valor
-        // que vem do app, para ninguém conseguir pagar menos manipulando
-        // o aplicativo.
         const calculo = calcularTotalSeguro(itens);
         if (!calculo.ok) {
             return res.status(400).json({ erro: calculo.erro });
@@ -82,7 +68,7 @@ app.post("/criar-pagamento", async (req, res) => {
         res.json(pagamento);
     } catch (erro) {
         console.error("❌ Erro ao criar pagamento:", erro?.message || erro);
-        console.error(erro); // log completo — essencial pra depurar no Render
+        console.error(erro);
         res.status(500).json({
             erro: "Erro ao processar pagamento",
             detalhes: erro?.message || String(erro),
@@ -90,9 +76,6 @@ app.post("/criar-pagamento", async (req, res) => {
     }
 });
 
-// ================================================================
-// ENDPOINT PARA CRIAR PIX
-// ================================================================
 app.post("/criar-pix", async (req, res) => {
     try {
         const { email, cpf, nome, itens } = req.body;
@@ -152,11 +135,6 @@ app.post("/criar-pix", async (req, res) => {
     }
 });
 
-// ================================================================
-// WEBHOOK — recebe notificações do Mercado Pago sobre mudança de
-// status (essencial pro Pix, que é assíncrono: o pagamento pode
-// ser aprovado segundos ou minutos depois do QR Code ser gerado)
-// ================================================================
 app.post("/webhook", async (req, res) => {
     try {
         console.log("🔔 Webhook recebido:", JSON.stringify(req.body));
@@ -165,28 +143,19 @@ app.post("/webhook", async (req, res) => {
         if (type === "payment" && data?.id) {
             const pagamento = await paymentClient.get({ id: data.id });
             console.log(`   Pagamento ${data.id} -> status: ${pagamento.status}`);
-            // Aqui você pode, por exemplo, marcar a venda como paga
-            // no seu banco de dados / planilha quando status === 'approved'.
         }
 
-        res.sendStatus(200); // sempre responder 200 rápido, senão o MP re-envia
+        res.sendStatus(200);
     } catch (erro) {
         console.error("❌ Erro no webhook:", erro?.message || erro);
-        res.sendStatus(200); // mesmo com erro interno, confirma o recebimento
+        res.sendStatus(200);
     }
 });
 
-// ================================================================
-// ENDPOINT PARA LISTAR PRODUTOS (o app pode usar isso pra conferir
-// preços em vez de manter uma cópia só local)
-// ================================================================
 app.get("/produtos", (req, res) => {
     res.json(PRODUTOS);
 });
 
-// ================================================================
-// ENDPOINT PARA TESTAR O SERVIDOR
-// ================================================================
 app.get("/", (req, res) => {
     res.json({
         mensagem: "🚀 RV Express Backend funcionando!",
@@ -195,9 +164,6 @@ app.get("/", (req, res) => {
     });
 });
 
-// ================================================================
-// INICIA O SERVIDOR
-// ================================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
