@@ -1,13 +1,18 @@
 {
   "name": "rv-express-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Backend de pagamentos RV Express (cartao + Pix) via Mercado Pago",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "^4.19.2",
     "cors": "^2.8.5",
-    "mercadopago": "^1.5.17"
+    "mercadopago": "^2.0.15",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
