@@ -165,6 +165,20 @@ app.post("/criar-pix", async (req, res) => {
 });
 
 // ================================================================
+// CONSULTAR STATUS DE UM PAGAMENTO (usado pelo app para saber se
+// o PIX já foi pago de verdade, em vez de simular com um timer)
+// ================================================================
+app.get("/pagamento/:id", async (req, res) => {
+    try {
+        const pagamento = await paymentClient.get({ id: req.params.id });
+        res.json({ status: pagamento.status, id: pagamento.id });
+    } catch (erro) {
+        console.error("❌ Erro ao consultar pagamento:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao consultar status do pagamento" });
+    }
+});
+
+// ================================================================
 // WEBHOOK
 // ================================================================
 app.post("/webhook", async (req, res) => {
