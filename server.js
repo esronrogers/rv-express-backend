@@ -88,9 +88,6 @@ app.post("/criar-pagamento", async (req, res) => {
                 first_name: nome || "Cliente",
             },
         };
-        if (deviceId) {
-            bodyPagamento.additional_info = { device_id: deviceId };
-        }
 
         const pagamento = await paymentClient.create({
             body: bodyPagamento,
