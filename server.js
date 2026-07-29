@@ -73,28 +73,28 @@ app.post("/criar-pagamento", async (req, res) => {
 
         const idempotencyKey = crypto.randomUUID();
 
-        const requestOptions = { idempotencyKey };
+        const bodyPagamento = {
+            transaction_amount: valor,
+            token: token,
+            description: "Compra RV Express",
+            installments: 1,
+            payment_method_id: payment_method_id || "visa",
+            payer: {
+                email: email || "cliente@rvexpress.com",
+                identification: {
+                    type: "CPF",
+                    number: String(cpf).replace(/\D/g, ""),
+                },
+                first_name: nome || "Cliente",
+            },
+        };
         if (deviceId) {
-            requestOptions.headers = { 'X-meli-session-id': deviceId };
+            bodyPagamento.additional_info = { device_id: deviceId };
         }
 
         const pagamento = await paymentClient.create({
-            body: {
-                transaction_amount: valor,
-                token: token,
-                description: "Compra RV Express",
-                installments: 1,
-                payment_method_id: payment_method_id || "visa",
-                payer: {
-                    email: email || "cliente@rvexpress.com",
-                    identification: {
-                        type: "CPF",
-                        number: String(cpf).replace(/\D/g, ""),
-                    },
-                    first_name: nome || "Cliente",
-                },
-            },
-            requestOptions: requestOptions,
+            body: bodyPagamento,
+            requestOptions: { idempotencyKey },
         });
 
         console.log("✅ Pagamento criado! Status:", pagamento.status);
