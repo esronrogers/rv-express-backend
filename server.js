@@ -52,7 +52,7 @@ function protegerAdmin(req, res, next) {
 // ================================================================
 app.post("/criar-pagamento", async (req, res) => {
     try {
-        const { token, payment_method_id, email, cpf, nome, itens } = req.body;
+        const { token, payment_method_id, email, cpf, nome, itens, deviceId } = req.body;
 
         console.log("📱 Recebendo pagamento com cartão...");
 
@@ -73,6 +73,11 @@ app.post("/criar-pagamento", async (req, res) => {
 
         const idempotencyKey = crypto.randomUUID();
 
+        const requestOptions = { idempotencyKey };
+        if (deviceId) {
+            requestOptions.headers = { 'X-meli-session-id': deviceId };
+        }
+
         const pagamento = await paymentClient.create({
             body: {
                 transaction_amount: valor,
@@ -89,7 +94,7 @@ app.post("/criar-pagamento", async (req, res) => {
                     first_name: nome || "Cliente",
                 },
             },
-            requestOptions: { idempotencyKey },
+            requestOptions: requestOptions,
         });
 
         console.log("✅ Pagamento criado! Status:", pagamento.status);
