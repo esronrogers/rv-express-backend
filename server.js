@@ -259,8 +259,8 @@ app.post("/criar-pagamento-point", async (req, res) => {
 //    perguntando isso a cada poucos segundos, igual fizemos com o Pix).
 app.get("/point/pagamento/:deviceId/:paymentIntentId", async (req, res) => {
     try {
-        const { deviceId, paymentIntentId } = req.params;
-        const url = `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`;
+        const { paymentIntentId } = req.params;
+        const url = `https://api.mercadopago.com/point/integration-api/payment-intents/${paymentIntentId}`;
         const resp = await fetch(url, {
             headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
         });
@@ -289,6 +289,7 @@ app.post("/point/pagamento/:deviceId/:paymentIntentId/cancelar", async (req, res
             `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`,
             { method: "DELETE", headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
         );
+        console.log("🧹 Cancelar Point - HTTP:", resp.status);
         res.sendStatus(resp.status);
     } catch (erro) {
         console.error("❌ Erro ao cancelar pagamento Point:", erro?.message || erro);
