@@ -260,15 +260,23 @@ app.post("/criar-pagamento-point", async (req, res) => {
 app.get("/point/pagamento/:deviceId/:paymentIntentId", async (req, res) => {
     try {
         const { deviceId, paymentIntentId } = req.params;
-        const resp = await fetch(
-            `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`,
-            { headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
-        );
-        const data = await resp.json();
+        const url = `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`;
+        const resp = await fetch(url, {
+            headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
+        });
+        const textoBruto = await resp.text();
+        console.log("🔍 Consulta status Point - URL:", url);
+        console.log("🔍 Consulta status Point - HTTP:", resp.status, "- Resposta:", textoBruto);
+        let data;
+        try {
+            data = JSON.parse(textoBruto);
+        } catch (e) {
+            data = { respostaCrua: textoBruto };
+        }
         res.status(resp.status).json(data);
     } catch (erro) {
         console.error("❌ Erro ao consultar pagamento Point:", erro?.message || erro);
-        res.status(500).json({ erro: "Erro ao consultar status na maquininha" });
+        res.status(500).json({ erro: "Erro ao consultar status na maquininha", detalhes: erro?.message || String(erro) });
     }
 });
 
@@ -285,6 +293,25 @@ app.post("/point/pagamento/:deviceId/:paymentIntentId/cancelar", async (req, res
     } catch (erro) {
         console.error("❌ Erro ao cancelar pagamento Point:", erro?.message || erro);
         res.status(500).json({ erro: "Erro ao cancelar cobrança na maquininha" });
+    }
+});
+
+// 5) Tenta forçar a limpeza de qualquer cobrança presa na fila da
+//    maquininha, sem precisar saber o ID exato dela.
+app.post("/point/:deviceId/limpar-fila", async (req, res) => {
+    try {
+        const { deviceId } = req.params;
+        const resp = await fetch(
+            `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents`,
+            { method: "DELETE", headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
+        );
+        let data = {};
+        try { data = await resp.json(); } catch (e) {}
+        console.log("🧹 Tentativa de limpar fila:", resp.status, JSON.stringify(data));
+        res.status(resp.status).json({ status: resp.status, data });
+    } catch (erro) {
+        console.error("❌ Erro ao limpar fila:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao limpar fila", detalhes: erro?.message });
     }
 });
 
