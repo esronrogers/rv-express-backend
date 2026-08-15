@@ -88,6 +88,9 @@ app.post("/criar-pagamento", async (req, res) => {
                 first_name: nome || "Cliente",
             },
         };
+        if (deviceId) {
+            bodyPagamento.additional_info = { device_id: deviceId };
+        }
 
         const pagamento = await paymentClient.create({
             body: bodyPagamento,
@@ -177,6 +180,111 @@ app.get("/pagamento/:id", async (req, res) => {
     } catch (erro) {
         console.error("❌ Erro ao consultar pagamento:", erro?.message || erro);
         res.status(500).json({ erro: "Erro ao consultar status do pagamento" });
+    }
+});
+
+// ================================================================
+// MAQUININHA (POINT) — pagamento com cartão presente
+// ================================================================
+// Essa é uma API mais nova do Mercado Pago. Vamos com cuidado:
+// os endpoints abaixo seguem a documentação oficial da "Point
+// Integration API", mas como é uma integração nova, é normal
+// precisarmos ajustar algum detalhe nos primeiros testes reais.
+
+// 1) Lista as maquininhas vinculadas à conta — usamos isso pra
+//    descobrir o "device_id" de verdade que a API usa (diferente
+//    do número de série que aparece na tela do app Point).
+app.get("/point/dispositivos", async (req, res) => {
+    try {
+        const resp = await fetch("https://api.mercadopago.com/point/integration-api/devices", {
+            headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
+        });
+        const data = await resp.json();
+        console.log("📟 Dispositivos Point encontrados:", JSON.stringify(data));
+        res.status(resp.status).json(data);
+    } catch (erro) {
+        console.error("❌ Erro ao listar dispositivos Point:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao listar dispositivos", detalhes: erro?.message });
+    }
+});
+
+// 2) Cria uma "intenção de pagamento" na maquininha — ela acorda
+//    mostrando o valor, e o cliente aproxima/insere o cartão nela.
+app.post("/criar-pagamento-point", async (req, res) => {
+    try {
+        const { itens, deviceId } = req.body;
+
+        if (!deviceId) {
+            return res.status(400).json({ erro: "deviceId não informado" });
+        }
+
+        const calculo = calcularTotalSeguro(itens);
+        if (!calculo.ok) {
+            return res.status(400).json({ erro: calculo.erro });
+        }
+        const valor = calculo.total;
+        const valorEmCentavos = Math.round(valor * 100);
+        console.log("💳 Enviando cobrança para a maquininha:", valor);
+
+        const resp = await fetch(
+            `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json",
+                    "X-Idempotency-Key": crypto.randomUUID(),
+                },
+                body: JSON.stringify({
+                    amount: valorEmCentavos,
+                    description: "Compra RV Express",
+                }),
+            }
+        );
+        const data = await resp.json();
+        console.log("💳 Resposta da maquininha:", JSON.stringify(data));
+
+        if (!resp.ok) {
+            return res.status(resp.status).json({ erro: "Erro ao enviar cobrança para a maquininha", detalhes: data });
+        }
+
+        res.json({ id: data.id, valor: valor, status: data.state || "pendente" });
+    } catch (erro) {
+        console.error("❌ Erro ao criar pagamento Point:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao processar pagamento na maquininha", detalhes: erro?.message });
+    }
+});
+
+// 3) Consulta o status da cobrança na maquininha (o app fica
+//    perguntando isso a cada poucos segundos, igual fizemos com o Pix).
+app.get("/point/pagamento/:deviceId/:paymentIntentId", async (req, res) => {
+    try {
+        const { deviceId, paymentIntentId } = req.params;
+        const resp = await fetch(
+            `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`,
+            { headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
+        );
+        const data = await resp.json();
+        res.status(resp.status).json(data);
+    } catch (erro) {
+        console.error("❌ Erro ao consultar pagamento Point:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao consultar status na maquininha" });
+    }
+});
+
+// 4) Cancela a cobrança na maquininha (usado se o cliente desistir
+//    ou o app precisar abortar a espera).
+app.post("/point/pagamento/:deviceId/:paymentIntentId/cancelar", async (req, res) => {
+    try {
+        const { deviceId, paymentIntentId } = req.params;
+        const resp = await fetch(
+            `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents/${paymentIntentId}`,
+            { method: "DELETE", headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` } }
+        );
+        res.sendStatus(resp.status);
+    } catch (erro) {
+        console.error("❌ Erro ao cancelar pagamento Point:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao cancelar cobrança na maquininha" });
     }
 });
 
