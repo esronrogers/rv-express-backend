@@ -60,7 +60,7 @@ app.post("/criar-pagamento", async (req, res) => {
             return res.status(400).json({ erro: "Token do cartão não informado" });
         }
 
-        const calculo = calcularTotalSeguro(itens);
+        const calculo = await calcularTotalSeguro(itens);
         if (!calculo.ok) {
             return res.status(400).json({ erro: calculo.erro });
         }
@@ -118,7 +118,7 @@ app.post("/criar-pix", async (req, res) => {
 
         console.log("📱 Criando PIX...");
 
-        const calculo = calcularTotalSeguro(itens);
+        const calculo = await calcularTotalSeguro(itens);
         if (!calculo.ok) {
             return res.status(400).json({ erro: calculo.erro });
         }
@@ -207,7 +207,6 @@ app.get("/point/dispositivos", async (req, res) => {
         res.status(500).json({ erro: "Erro ao listar dispositivos", detalhes: erro?.message });
     }
 });
-
 // 2) Cria uma "intenção de pagamento" na maquininha — ela acorda
 //    mostrando o valor, e o cliente aproxima/insere o cartão nela.
 app.post("/criar-pagamento-point", async (req, res) => {
@@ -218,7 +217,7 @@ app.post("/criar-pagamento-point", async (req, res) => {
             return res.status(400).json({ erro: "deviceId não informado" });
         }
 
-        const calculo = calcularTotalSeguro(itens);
+        const calculo = await calcularTotalSeguro(itens);
         if (!calculo.ok) {
             return res.status(400).json({ erro: calculo.erro });
         }
@@ -337,43 +336,68 @@ app.post("/webhook", async (req, res) => {
 // ================================================================
 // PRODUTOS — leitura pública (o app usa isso pra montar a vitrine)
 // ================================================================
-app.get("/produtos", (req, res) => {
-    res.json(obterProdutos());
+app.get("/produtos", async (req, res) => {
+    try {
+        res.json(await obterProdutos());
+    } catch (erro) {
+        console.error("❌ Erro ao buscar produtos:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao buscar produtos", detalhes: erro?.message });
+    }
 });
 
 // ================================================================
 // PRODUTOS — administração (criar, editar, excluir, restaurar)
 // Protegido pela senha do admin, enviada no cabeçalho x-admin-key.
 // ================================================================
-app.post("/produtos", protegerAdmin, (req, res) => {
-    const { codigo, nome, preco, imagem, detalhe } = req.body;
-    if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
-        return res.status(400).json({ erro: "Dados do produto inválidos" });
+app.post("/produtos", protegerAdmin, async (req, res) => {
+    try {
+        const { codigo, nome, preco, imagem, detalhe } = req.body;
+        if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
+            return res.status(400).json({ erro: "Dados do produto inválidos" });
+        }
+        const resultado = await adicionarProduto({ codigo, nome, preco, imagem, detalhe });
+        if (!resultado.ok) return res.status(409).json({ erro: resultado.erro });
+        res.json(resultado);
+    } catch (erro) {
+        console.error("❌ Erro ao adicionar produto:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao adicionar produto", detalhes: erro?.message });
     }
-    const resultado = adicionarProduto({ codigo, nome, preco, imagem, detalhe });
-    if (!resultado.ok) return res.status(409).json({ erro: resultado.erro });
-    res.json(resultado);
 });
 
-app.put("/produtos/:codigo", protegerAdmin, (req, res) => {
-    const { codigo, nome, preco, imagem, detalhe } = req.body;
-    if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
-        return res.status(400).json({ erro: "Dados do produto inválidos" });
+app.put("/produtos/:codigo", protegerAdmin, async (req, res) => {
+    try {
+        const { codigo, nome, preco, imagem, detalhe } = req.body;
+        if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
+            return res.status(400).json({ erro: "Dados do produto inválidos" });
+        }
+        const resultado = await atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe });
+        if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
+        res.json(resultado);
+    } catch (erro) {
+        console.error("❌ Erro ao atualizar produto:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao atualizar produto", detalhes: erro?.message });
     }
-    const resultado = atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe });
-    if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
-    res.json(resultado);
 });
 
-app.delete("/produtos/:codigo", protegerAdmin, (req, res) => {
-    const resultado = removerProduto(req.params.codigo);
-    if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
-    res.json(resultado);
+app.delete("/produtos/:codigo", protegerAdmin, async (req, res) => {
+    try {
+        const resultado = await removerProduto(req.params.codigo);
+        if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
+        res.json(resultado);
+    } catch (erro) {
+        console.error("❌ Erro ao remover produto:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao remover produto", detalhes: erro?.message });
+    }
 });
 
-app.post("/produtos/restaurar-padrao", protegerAdmin, (req, res) => {
-    const produtos = restaurarPadrao();
-    res.json({ ok: true, produtos });
+app.post("/produtos/restaurar-padrao", protegerAdmin, async (req, res) => {
+    try {
+        const produtos = await restaurarPadrao();
+        res.json({ ok: true, produtos });
+    } catch (erro) {
+        console.error("❌ Erro ao restaurar produtos:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao restaurar produtos", detalhes: erro?.message });
+    }
 });
 
 // ================================================================
