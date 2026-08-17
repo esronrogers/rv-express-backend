@@ -1,7 +1,7 @@
 {
   "name": "rv-express-backend",
-  "version": "2.0.0",
-  "description": "Backend de pagamentos RV Express (cartao + Pix) via Mercado Pago",
+  "version": "2.1.0",
+  "description": "Backend de pagamentos RV Express (Pix + Maquininha Point) via Mercado Pago, com produtos salvos no Firebase",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,7 +10,8 @@
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "mercadopago": "^2.0.15",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.1.0"
   },
   "engines": {
     "node": ">=18"
