@@ -1,16 +1,42 @@
 // ================================================================
-// CATÁLOGO DE PRODUTOS — agora fica salvo em um arquivo (data/produtos.json)
-// e pode ser alterado pelo painel Administrar do app, sem precisar
-// mexer em código toda vez que você adiciona um produto novo.
+// CATÁLOGO DE PRODUTOS — salvo no Firebase Realtime Database
+// (nuvem, gratuito), usando o SDK oficial de administrador do
+// Firebase. Isso resolve o problema de produtos "sumirem" quando
+// o servidor Render reinicia.
 // ================================================================
+const admin = require("firebase-admin");
 const fs = require("fs");
-const path = require("path");
 
-const PASTA_DADOS = path.join(__dirname, "data");
-const ARQUIVO_PRODUTOS = path.join(PASTA_DADOS, "produtos.json");
+let db = null;
 
-// Lista usada apenas na primeiríssima vez que o servidor roda,
-// caso o arquivo produtos.json ainda não exista.
+// Inicializa a conexão com o Firebase (só precisa fazer isso uma
+// vez, na primeira chamada). A URL vem de uma variável de ambiente,
+// e a chave de acesso vem de um "Secret File" configurado no Render.
+function inicializarFirebase() {
+    if (admin.apps.length > 0) {
+        db = admin.database();
+        return;
+    }
+    if (!process.env.FIREBASE_DATABASE_URL) {
+        throw new Error("FIREBASE_DATABASE_URL não configurada nas variáveis de ambiente do Render.");
+    }
+    const caminhoChave = "/etc/secrets/firebase-service-account.json";
+    if (!fs.existsSync(caminhoChave)) {
+        throw new Error(
+            "Arquivo de credenciais do Firebase não encontrado em " + caminhoChave +
+            " — confira se o Secret File foi criado no Render com esse nome exato."
+        );
+    }
+    const serviceAccount = JSON.parse(fs.readFileSync(caminhoChave, "utf-8"));
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: process.env.FIREBASE_DATABASE_URL,
+    });
+    db = admin.database();
+}
+
+// Lista usada apenas na primeiríssima vez, caso o Firebase ainda
+// esteja vazio (nunca foi inicializado).
 const PRODUTOS_PADRAO = [
     { codigo: '7891000123456', nome: 'Coca-Cola 350ml',    preco: 6.50, imagem: '🥤', detalhe: 'Lata' },
     { codigo: '7891000654321', nome: 'Heineken 350ml',     preco: 7.00, imagem: '🍺', detalhe: 'Lata' },
@@ -22,74 +48,69 @@ const PRODUTOS_PADRAO = [
     { codigo: '7891000777666', nome: 'Salgadinho Cebola',  preco: 4.50, imagem: '🍿', detalhe: 'Pacote 100g' },
 ];
 
-function garantirArquivo() {
-    if (!fs.existsSync(PASTA_DADOS)) fs.mkdirSync(PASTA_DADOS, { recursive: true });
-    if (!fs.existsSync(ARQUIVO_PRODUTOS)) {
-        fs.writeFileSync(ARQUIVO_PRODUTOS, JSON.stringify(PRODUTOS_PADRAO, null, 2));
-    }
-}
+async function obterProdutos() {
+    inicializarFirebase();
+    const snapshot = await db.ref("produtos").once("value");
+    const dados = snapshot.val();
 
-function obterProdutos() {
-    garantirArquivo();
-    try {
-        return JSON.parse(fs.readFileSync(ARQUIVO_PRODUTOS, "utf-8"));
-    } catch (e) {
-        console.error("⚠️ Erro ao ler produtos.json, usando lista padrão:", e.message);
+    if (!dados) {
+        await salvarProdutos(PRODUTOS_PADRAO);
         return JSON.parse(JSON.stringify(PRODUTOS_PADRAO));
     }
+
+    return Array.isArray(dados) ? dados.filter(Boolean) : Object.values(dados);
 }
 
-function salvarProdutosEmDisco(lista) {
-    garantirArquivo();
-    fs.writeFileSync(ARQUIVO_PRODUTOS, JSON.stringify(lista, null, 2));
+async function salvarProdutos(lista) {
+    inicializarFirebase();
+    await db.ref("produtos").set(lista);
 }
 
-function buscarProduto(codigo) {
-    return obterProdutos().find(p => p.codigo === String(codigo).trim());
+async function buscarProduto(codigo) {
+    const lista = await obterProdutos();
+    return lista.find(p => p.codigo === String(codigo).trim());
 }
 
-function adicionarProduto({ codigo, nome, preco, imagem, detalhe }) {
-    const lista = obterProdutos();
+async function adicionarProduto({ codigo, nome, preco, imagem, detalhe }) {
+    const lista = await obterProdutos();
     if (lista.find(p => p.codigo === codigo)) {
         return { ok: false, erro: "Já existe um produto com esse código de barras" };
     }
     lista.push({ codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "" });
-    salvarProdutosEmDisco(lista);
+    await salvarProdutos(lista);
     return { ok: true, produtos: lista };
 }
 
-function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe }) {
-    const lista = obterProdutos();
+async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe }) {
+    const lista = await obterProdutos();
     const index = lista.findIndex(p => p.codigo === codigoAtual);
     if (index === -1) return { ok: false, erro: "Produto não encontrado" };
     if (codigo !== codigoAtual && lista.find(p => p.codigo === codigo)) {
         return { ok: false, erro: "Já existe outro produto com esse código de barras" };
     }
     lista[index] = { codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "" };
-    salvarProdutosEmDisco(lista);
+    await salvarProdutos(lista);
     return { ok: true, produtos: lista };
 }
 
-function removerProduto(codigo) {
-    const lista = obterProdutos();
+async function removerProduto(codigo) {
+    const lista = await obterProdutos();
     const nova = lista.filter(p => p.codigo !== codigo);
     if (nova.length === lista.length) return { ok: false, erro: "Produto não encontrado" };
-    salvarProdutosEmDisco(nova);
+    await salvarProdutos(nova);
     return { ok: true, produtos: nova };
 }
 
-function restaurarPadrao() {
-    salvarProdutosEmDisco(JSON.parse(JSON.stringify(PRODUTOS_PADRAO)));
-    return obterProdutos();
+async function restaurarPadrao() {
+    await salvarProdutos(PRODUTOS_PADRAO);
+    return JSON.parse(JSON.stringify(PRODUTOS_PADRAO));
 }
 
-// Recebe os itens do carrinho [{codigo, qtd}] e calcula o total
-// usando sempre o preço salvo no servidor — nunca o que o app manda.
-function calcularTotalSeguro(itens) {
+async function calcularTotalSeguro(itens) {
     if (!Array.isArray(itens) || itens.length === 0) {
         return { ok: false, erro: "Carrinho vazio ou inválido" };
     }
-    const catalogo = obterProdutos();
+    const catalogo = await obterProdutos();
     let total = 0;
     for (const item of itens) {
         const produto = catalogo.find(p => p.codigo === String(item.codigo).trim());
