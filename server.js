@@ -207,11 +207,12 @@ app.get("/point/dispositivos", async (req, res) => {
         res.status(500).json({ erro: "Erro ao listar dispositivos", detalhes: erro?.message });
     }
 });
+
 // 2) Cria uma "intenção de pagamento" na maquininha — ela acorda
 //    mostrando o valor, e o cliente aproxima/insere o cartão nela.
 app.post("/criar-pagamento-point", async (req, res) => {
     try {
-        const { itens, deviceId } = req.body;
+        const { itens, deviceId, tipoPagamento } = req.body;
 
         if (!deviceId) {
             return res.status(400).json({ erro: "deviceId não informado" });
@@ -223,7 +224,18 @@ app.post("/criar-pagamento-point", async (req, res) => {
         }
         const valor = calculo.total;
         const valorEmCentavos = Math.round(valor * 100);
-        console.log("💳 Enviando cobrança para a maquininha:", valor);
+        console.log("💳 Enviando cobrança para a maquininha:", valor, "- tipo:", tipoPagamento || "padrão (cartão)");
+
+        const corpoRequisicao = {
+            amount: valorEmCentavos,
+            description: "Compra RV Express",
+        };
+        // Se um tipo específico for informado (ex: "pix"), mandamos pra
+        // API — isso é experimental, ainda estamos testando se a
+        // maquininha aceita gerar Pix por esse caminho.
+        if (tipoPagamento) {
+            corpoRequisicao.payment = { type: tipoPagamento };
+        }
 
         const resp = await fetch(
             `https://api.mercadopago.com/point/integration-api/devices/${deviceId}/payment-intents`,
@@ -234,10 +246,7 @@ app.post("/criar-pagamento-point", async (req, res) => {
                     "Content-Type": "application/json",
                     "X-Idempotency-Key": crypto.randomUUID(),
                 },
-                body: JSON.stringify({
-                    amount: valorEmCentavos,
-                    description: "Compra RV Express",
-                }),
+                body: JSON.stringify(corpoRequisicao),
             }
         );
         const data = await resp.json();
@@ -312,6 +321,75 @@ app.post("/point/:deviceId/limpar-fila", async (req, res) => {
     } catch (erro) {
         console.error("❌ Erro ao limpar fila:", erro?.message || erro);
         res.status(500).json({ erro: "Erro ao limpar fila", detalhes: erro?.message });
+    }
+});
+
+// ================================================================
+// NOTIFICAÇÃO POR WHATSAPP (CallMeBot) — avisa os sócios sempre que
+// uma venda é concluída. As chaves ficam só aqui no servidor, nunca
+// aparecem no código do app (mais seguro).
+// ================================================================
+// Formato da variável de ambiente WHATSAPP_NOTIFICACOES no Render:
+// "numero1:chave1,numero2:chave2,numero3:chave3,numero4:chave4"
+function obterContatosWhatsapp() {
+    const config = process.env.WHATSAPP_NOTIFICACOES || "";
+    return config
+        .split(",")
+        .map(par => par.trim())
+        .filter(Boolean)
+        .map(par => {
+            const [numero, apikey] = par.split(":");
+            return { numero: numero?.trim(), apikey: apikey?.trim() };
+        })
+        .filter(c => c.numero && c.apikey);
+}
+
+app.post("/notificar-venda", async (req, res) => {
+    try {
+        const { itens, total, tipoPagamento } = req.body;
+        const contatos = obterContatosWhatsapp();
+
+        if (contatos.length === 0) {
+            console.log("⚠️ Nenhum contato de WhatsApp configurado (WHATSAPP_NOTIFICACOES vazio).");
+            return res.json({ ok: false, aviso: "Nenhum contato configurado" });
+        }
+
+        const listaItens = Array.isArray(itens)
+            ? itens.map(i => `- ${i.qtd}x ${i.nome}`).join("\n")
+            : "";
+        const agora = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+        const mensagem =
+            `🛒 *Nova venda - RV Express*\n` +
+            `💰 Total: R$ ${Number(total).toFixed(2)}\n` +
+            `💳 Pagamento: ${tipoPagamento || "não informado"}\n` +
+            (listaItens ? `📦 Itens:\n${listaItens}\n` : "") +
+            `🕐 ${agora}`;
+
+        // Envia pra todos os contatos configurados, um de cada vez.
+        // Se um falhar, os outros continuam sendo tentados normalmente.
+        const resultados = await Promise.allSettled(
+            contatos.map(({ numero, apikey }) =>
+                fetch(
+                    `https://api.callmebot.com/whatsapp.php?phone=${numero}&text=${encodeURIComponent(mensagem)}&apikey=${apikey}`
+                )
+            )
+        );
+
+        resultados.forEach((r, i) => {
+            const numero = contatos[i].numero;
+            if (r.status === "fulfilled") {
+                console.log(`✅ Notificação WhatsApp enviada para ${numero}`);
+            } else {
+                console.error(`❌ Falha ao notificar ${numero}:`, r.reason?.message || r.reason);
+            }
+        });
+
+        res.json({ ok: true, enviados: contatos.length });
+    } catch (erro) {
+        console.error("❌ Erro ao notificar venda por WhatsApp:", erro?.message || erro);
+        // Nunca deixamos isso quebrar o fluxo da compra — só logamos o erro.
+        res.status(500).json({ ok: false, erro: erro?.message });
     }
 });
 
