@@ -38,14 +38,14 @@ function inicializarFirebase() {
 // Lista usada apenas na primeiríssima vez, caso o Firebase ainda
 // esteja vazio (nunca foi inicializado).
 const PRODUTOS_PADRAO = [
-    { codigo: '7891000123456', nome: 'Coca-Cola 350ml',    preco: 6.50, imagem: '🥤', detalhe: 'Lata' },
-    { codigo: '7891000654321', nome: 'Heineken 350ml',     preco: 7.00, imagem: '🍺', detalhe: 'Lata' },
-    { codigo: '7891000789012', nome: 'Água Mineral 500ml', preco: 2.50, imagem: '💧', detalhe: 'Garrafa' },
-    { codigo: '7891000890123', nome: 'Suco Natural 1L',    preco: 5.90, imagem: '🧃', detalhe: 'Garrafa' },
-    { codigo: '7891000987654', nome: 'BIS Original',       preco: 4.00, imagem: '🍫', detalhe: 'Pacote' },
-    { codigo: '7891000543210', nome: 'Pão de Queijo',      preco: 3.50, imagem: '🥐', detalhe: 'Unidade' },
-    { codigo: '7891000666555', nome: 'Refrigerante 2L',    preco: 8.90, imagem: '🥤', detalhe: 'Garrafa' },
-    { codigo: '7891000777666', nome: 'Salgadinho Cebola',  preco: 4.50, imagem: '🍿', detalhe: 'Pacote 100g' },
+    { codigo: '7891000123456', nome: 'Coca-Cola 350ml',    preco: 6.50, imagem: '🥤', detalhe: 'Lata', estoque: 20 },
+    { codigo: '7891000654321', nome: 'Heineken 350ml',     preco: 7.00, imagem: '🍺', detalhe: 'Lata', estoque: 20 },
+    { codigo: '7891000789012', nome: 'Água Mineral 500ml', preco: 2.50, imagem: '💧', detalhe: 'Garrafa', estoque: 20 },
+    { codigo: '7891000890123', nome: 'Suco Natural 1L',    preco: 5.90, imagem: '🧃', detalhe: 'Garrafa', estoque: 20 },
+    { codigo: '7891000987654', nome: 'BIS Original',       preco: 4.00, imagem: '🍫', detalhe: 'Pacote', estoque: 20 },
+    { codigo: '7891000543210', nome: 'Pão de Queijo',      preco: 3.50, imagem: '🥐', detalhe: 'Unidade', estoque: 20 },
+    { codigo: '7891000666555', nome: 'Refrigerante 2L',    preco: 8.90, imagem: '🥤', detalhe: 'Garrafa', estoque: 20 },
+    { codigo: '7891000777666', nome: 'Salgadinho Cebola',  preco: 4.50, imagem: '🍿', detalhe: 'Pacote 100g', estoque: 20 },
 ];
 
 async function obterProdutos() {
@@ -71,24 +71,32 @@ async function buscarProduto(codigo) {
     return lista.find(p => p.codigo === String(codigo).trim());
 }
 
-async function adicionarProduto({ codigo, nome, preco, imagem, detalhe }) {
+async function adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque }) {
     const lista = await obterProdutos();
     if (lista.find(p => p.codigo === codigo)) {
         return { ok: false, erro: "Já existe um produto com esse código de barras" };
     }
-    lista.push({ codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "" });
+    const estoqueNum = Number(estoque);
+    lista.push({
+        codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "",
+        estoque: Number.isFinite(estoqueNum) && estoqueNum >= 0 ? estoqueNum : 0,
+    });
     await salvarProdutos(lista);
     return { ok: true, produtos: lista };
 }
 
-async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe }) {
+async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe, estoque }) {
     const lista = await obterProdutos();
     const index = lista.findIndex(p => p.codigo === codigoAtual);
     if (index === -1) return { ok: false, erro: "Produto não encontrado" };
     if (codigo !== codigoAtual && lista.find(p => p.codigo === codigo)) {
         return { ok: false, erro: "Já existe outro produto com esse código de barras" };
     }
-    lista[index] = { codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "" };
+    const estoqueNum = Number(estoque);
+    lista[index] = {
+        codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "",
+        estoque: Number.isFinite(estoqueNum) && estoqueNum >= 0 ? estoqueNum : (lista[index].estoque || 0),
+    };
     await salvarProdutos(lista);
     return { ok: true, produtos: lista };
 }
@@ -99,6 +107,24 @@ async function removerProduto(codigo) {
     if (nova.length === lista.length) return { ok: false, erro: "Produto não encontrado" };
     await salvarProdutos(nova);
     return { ok: true, produtos: nova };
+}
+
+// Diminui o estoque de cada item vendido, sempre que uma venda é
+// concluída. Nunca deixa o estoque ficar negativo (para em 0).
+async function baixarEstoque(itens) {
+    if (!Array.isArray(itens) || itens.length === 0) return;
+    const lista = await obterProdutos();
+    let alterou = false;
+    for (const item of itens) {
+        const produto = lista.find(p => p.codigo === String(item.codigo).trim());
+        if (produto) {
+            const qtd = Number(item.qtd) || 0;
+            const estoqueAtual = Number(produto.estoque) || 0;
+            produto.estoque = Math.max(0, estoqueAtual - qtd);
+            alterou = true;
+        }
+    }
+    if (alterou) await salvarProdutos(lista);
 }
 
 async function restaurarPadrao() {
@@ -134,4 +160,5 @@ module.exports = {
     removerProduto,
     restaurarPadrao,
     calcularTotalSeguro,
+    baixarEstoque,
 };
