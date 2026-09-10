@@ -10,6 +10,7 @@ const {
     atualizarProduto,
     removerProduto,
     restaurarPadrao,
+    baixarEstoque,
 } = require("./produtos");
 
 const app = express();
@@ -347,6 +348,16 @@ function obterContatosWhatsapp() {
 app.post("/notificar-venda", async (req, res) => {
     try {
         const { itens, total, tipoPagamento } = req.body;
+
+        // Diminui o estoque dos produtos vendidos. Fica num try/catch
+        // separado pra, se der algum problema aqui, não impedir o
+        // aviso por WhatsApp de ser enviado normalmente.
+        try {
+            await baixarEstoque(itens);
+        } catch (erroEstoque) {
+            console.error("❌ Erro ao baixar estoque:", erroEstoque?.message || erroEstoque);
+        }
+
         const contatos = obterContatosWhatsapp();
 
         if (contatos.length === 0) {
@@ -429,11 +440,11 @@ app.get("/produtos", async (req, res) => {
 // ================================================================
 app.post("/produtos", protegerAdmin, async (req, res) => {
     try {
-        const { codigo, nome, preco, imagem, detalhe } = req.body;
+        const { codigo, nome, preco, imagem, detalhe, estoque } = req.body;
         if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
             return res.status(400).json({ erro: "Dados do produto inválidos" });
         }
-        const resultado = await adicionarProduto({ codigo, nome, preco, imagem, detalhe });
+        const resultado = await adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque });
         if (!resultado.ok) return res.status(409).json({ erro: resultado.erro });
         res.json(resultado);
     } catch (erro) {
@@ -444,11 +455,11 @@ app.post("/produtos", protegerAdmin, async (req, res) => {
 
 app.put("/produtos/:codigo", protegerAdmin, async (req, res) => {
     try {
-        const { codigo, nome, preco, imagem, detalhe } = req.body;
+        const { codigo, nome, preco, imagem, detalhe, estoque } = req.body;
         if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
             return res.status(400).json({ erro: "Dados do produto inválidos" });
         }
-        const resultado = await atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe });
+        const resultado = await atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe, estoque });
         if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
         res.json(resultado);
     } catch (erro) {
