@@ -71,7 +71,7 @@ async function buscarProduto(codigo) {
     return lista.find(p => p.codigo === String(codigo).trim());
 }
 
-async function adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque }) {
+async function adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque, validade }) {
     const lista = await obterProdutos();
     if (lista.find(p => p.codigo === codigo)) {
         return { ok: false, erro: "Já existe um produto com esse código de barras" };
@@ -80,12 +80,13 @@ async function adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque 
     lista.push({
         codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "",
         estoque: Number.isFinite(estoqueNum) && estoqueNum >= 0 ? estoqueNum : 0,
+        validade: validade || "",
     });
     await salvarProdutos(lista);
     return { ok: true, produtos: lista };
 }
 
-async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe, estoque }) {
+async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, detalhe, estoque, validade }) {
     const lista = await obterProdutos();
     const index = lista.findIndex(p => p.codigo === codigoAtual);
     if (index === -1) return { ok: false, erro: "Produto não encontrado" };
@@ -96,6 +97,7 @@ async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, deta
     lista[index] = {
         codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "",
         estoque: Number.isFinite(estoqueNum) && estoqueNum >= 0 ? estoqueNum : (lista[index].estoque || 0),
+        validade: validade !== undefined ? validade : (lista[index].validade || ""),
     };
     await salvarProdutos(lista);
     return { ok: true, produtos: lista };
