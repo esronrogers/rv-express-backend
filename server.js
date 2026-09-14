@@ -440,11 +440,11 @@ app.get("/produtos", async (req, res) => {
 // ================================================================
 app.post("/produtos", protegerAdmin, async (req, res) => {
     try {
-        const { codigo, nome, preco, imagem, detalhe, estoque } = req.body;
+        const { codigo, nome, preco, imagem, detalhe, estoque, validade } = req.body;
         if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
             return res.status(400).json({ erro: "Dados do produto inválidos" });
         }
-        const resultado = await adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque });
+        const resultado = await adicionarProduto({ codigo, nome, preco, imagem, detalhe, estoque, validade });
         if (!resultado.ok) return res.status(409).json({ erro: resultado.erro });
         res.json(resultado);
     } catch (erro) {
@@ -455,11 +455,11 @@ app.post("/produtos", protegerAdmin, async (req, res) => {
 
 app.put("/produtos/:codigo", protegerAdmin, async (req, res) => {
     try {
-        const { codigo, nome, preco, imagem, detalhe, estoque } = req.body;
+        const { codigo, nome, preco, imagem, detalhe, estoque, validade } = req.body;
         if (!codigo || !nome || typeof preco !== "number" || preco <= 0) {
             return res.status(400).json({ erro: "Dados do produto inválidos" });
         }
-        const resultado = await atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe, estoque });
+        const resultado = await atualizarProduto(req.params.codigo, { codigo, nome, preco, imagem, detalhe, estoque, validade });
         if (!resultado.ok) return res.status(404).json({ erro: resultado.erro });
         res.json(resultado);
     } catch (erro) {
