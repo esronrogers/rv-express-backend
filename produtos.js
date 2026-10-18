@@ -98,6 +98,9 @@ async function atualizarProduto(codigoAtual, { codigo, nome, preco, imagem, deta
         codigo, nome, preco, imagem: imagem || "📦", detalhe: detalhe || "",
         estoque: Number.isFinite(estoqueNum) && estoqueNum >= 0 ? estoqueNum : (lista[index].estoque || 0),
         validade: validade !== undefined ? validade : (lista[index].validade || ""),
+        // mantém o histórico de vendas (usado no Top 20)
+        vendidos: Number(lista[index].vendidos) || 0,
+        vendasPorMes: lista[index].vendasPorMes || {},
     };
     await salvarProdutos(lista);
     return { ok: true, produtos: lista };
@@ -117,21 +120,52 @@ async function baixarEstoque(itens) {
     if (!Array.isArray(itens) || itens.length === 0) return;
     const lista = await obterProdutos();
     let alterou = false;
+    // mês atual no fuso do Brasil, formato AAAA-MM
+    const mesAtual = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
     for (const item of itens) {
         const produto = lista.find(p => p.codigo === String(item.codigo).trim());
         if (produto) {
             const qtd = Number(item.qtd) || 0;
             const estoqueAtual = Number(produto.estoque) || 0;
             produto.estoque = Math.max(0, estoqueAtual - qtd);
+            // Contadores de vendas para o ranking Top 20 (total e por mês)
+            produto.vendidos = (Number(produto.vendidos) || 0) + qtd;
+            if (!produto.vendasPorMes || typeof produto.vendasPorMes !== "object") produto.vendasPorMes = {};
+            produto.vendasPorMes[mesAtual] = (Number(produto.vendasPorMes[mesAtual]) || 0) + qtd;
             alterou = true;
         }
     }
     if (alterou) await salvarProdutos(lista);
 }
 
+// ---- Vendas do dia (compartilhadas entre todos os aparelhos) ----
+function diaBrasil() {
+    return new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+}
+async function registrarVenda(total) {
+    inicializarFirebase();
+    await db.ref("vendasDia/" + diaBrasil()).transaction(atual => {
+        const a = atual || { qtd: 0, total: 0 };
+        return { qtd: (Number(a.qtd) || 0) + 1, total: Math.round(((Number(a.total) || 0) + (Number(total) || 0)) * 100) / 100 };
+    });
+}
+async function obterVendasHoje() {
+    inicializarFirebase();
+    const snap = await db.ref("vendasDia/" + diaBrasil()).once("value");
+    const v = snap.val() || {};
+    return { qtd: Number(v.qtd) || 0, total: Number(v.total) || 0 };
+}
+
 async function restaurarPadrao() {
-    await salvarProdutos(PRODUTOS_PADRAO);
-    return JSON.parse(JSON.stringify(PRODUTOS_PADRAO));
+    // preserva o histórico de vendas dos produtos que continuam existindo
+    const antigos = await obterProdutos().catch(() => []);
+    const novos = JSON.parse(JSON.stringify(PRODUTOS_PADRAO));
+    novos.forEach(n => {
+        const a = antigos.find(p => p.codigo === n.codigo);
+        if (a) { n.vendidos = a.vendidos || 0; n.vendasPorMes = a.vendasPorMes || {}; }
+    });
+    await salvarProdutos(novos);
+    return novos;
 }
 
 async function calcularTotalSeguro(itens) {
@@ -163,4 +197,6 @@ module.exports = {
     restaurarPadrao,
     calcularTotalSeguro,
     baixarEstoque,
+    registrarVenda,
+    obterVendasHoje,
 };
