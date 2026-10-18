@@ -11,6 +11,8 @@ const {
     removerProduto,
     restaurarPadrao,
     baixarEstoque,
+    registrarVenda,
+    obterVendasHoje,
 } = require("./produtos");
 
 const app = express();
@@ -345,6 +347,15 @@ function obterContatosWhatsapp() {
         .filter(c => c.numero && c.apikey);
 }
 
+app.get("/vendas-hoje", protegerAdmin, async (req, res) => {
+    try {
+        res.json(await obterVendasHoje());
+    } catch (erro) {
+        console.error("❌ Erro ao buscar vendas de hoje:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao buscar vendas de hoje" });
+    }
+});
+
 app.post("/notificar-venda", async (req, res) => {
     try {
         const { itens, total, tipoPagamento } = req.body;
@@ -356,6 +367,13 @@ app.post("/notificar-venda", async (req, res) => {
             await baixarEstoque(itens);
         } catch (erroEstoque) {
             console.error("❌ Erro ao baixar estoque:", erroEstoque?.message || erroEstoque);
+        }
+
+        // Conta a venda do dia (aparece no Admin de todos os aparelhos)
+        try {
+            await registrarVenda(total);
+        } catch (erroVenda) {
+            console.error("❌ Erro ao registrar venda do dia:", erroVenda?.message || erroVenda);
         }
 
         const contatos = obterContatosWhatsapp();
