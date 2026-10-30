@@ -156,36 +156,14 @@ async function obterVendasHoje() {
     return { qtd: Number(v.qtd) || 0, total: Number(v.total) || 0 };
 }
 
-async function restaurarPadrao() {
-    // preserva o histórico de vendas dos produtos que continuam existindo
-    const antigos = await obterProdutos().catch(() => []);
-    const novos = JSON.parse(JSON.stringify(PRODUTOS_PADRAO));
-    novos.forEach(n => {
-        const a = antigos.find(p => p.codigo === n.codigo);
-        if (a) { n.vendidos = a.vendidos || 0; n.vendasPorMes = a.vendasPorMes || {}; }
-    });
-    await salvarProdutos(novos);
-    return novos;
-}
-
-async function calcularTotalSeguro(itens) {
-    if (!Array.isArray(itens) || itens.length === 0) {
-        return { ok: false, erro: "Carrinho vazio ou inválido" };
-    }
-    const catalogo = await obterProdutos();
-    let total = 0;
-    for (const item of itens) {
-        const produto = catalogo.find(p => p.codigo === String(item.codigo).trim());
-        if (!produto) {
-            return { ok: false, erro: `Produto com código ${item.codigo} não encontrado` };
-        }
-        const qtd = Number(item.qtd);
-        if (!Number.isInteger(qtd) || qtd <= 0 || qtd > 100) {
-            return { ok: false, erro: `Quantidade inválida para ${produto.nome}` };
-        }
-        total += produto.preco * qtd;
-    }
-    return { ok: true, total: Math.round(total * 100) / 100 };
+// Histórico: todos os dias com vendas [{dia:'2026-10-29', qtd, total}]
+async function obterVendasHistorico() {
+    inicializarFirebase();
+    const snap = await db.ref("vendasDia").once("value");
+    const v = snap.val() || {};
+    return Object.keys(v).sort().map(dia => ({
+        dia, qtd: Number(v[dia].qtd) || 0, total: Number(v[dia].total) || 0,
+    }));
 }
 
 module.exports = {
@@ -194,9 +172,9 @@ module.exports = {
     adicionarProduto,
     atualizarProduto,
     removerProduto,
-    restaurarPadrao,
     calcularTotalSeguro,
     baixarEstoque,
     registrarVenda,
     obterVendasHoje,
+    obterVendasHistorico,
 };
