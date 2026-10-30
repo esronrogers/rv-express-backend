@@ -9,10 +9,10 @@ const {
     adicionarProduto,
     atualizarProduto,
     removerProduto,
-    restaurarPadrao,
     baixarEstoque,
     registrarVenda,
     obterVendasHoje,
+    obterVendasHistorico,
 } = require("./produtos");
 
 const app = express();
@@ -356,6 +356,15 @@ app.get("/vendas-hoje", protegerAdmin, async (req, res) => {
     }
 });
 
+app.get("/vendas-historico", protegerAdmin, async (req, res) => {
+    try {
+        res.json(await obterVendasHistorico());
+    } catch (erro) {
+        console.error("❌ Erro ao buscar histórico de vendas:", erro?.message || erro);
+        res.status(500).json({ erro: "Erro ao buscar histórico de vendas" });
+    }
+});
+
 app.post("/notificar-venda", async (req, res) => {
     try {
         const { itens, total, tipoPagamento } = req.body;
@@ -494,16 +503,6 @@ app.delete("/produtos/:codigo", protegerAdmin, async (req, res) => {
     } catch (erro) {
         console.error("❌ Erro ao remover produto:", erro?.message || erro);
         res.status(500).json({ erro: "Erro ao remover produto", detalhes: erro?.message });
-    }
-});
-
-app.post("/produtos/restaurar-padrao", protegerAdmin, async (req, res) => {
-    try {
-        const produtos = await restaurarPadrao();
-        res.json({ ok: true, produtos });
-    } catch (erro) {
-        console.error("❌ Erro ao restaurar produtos:", erro?.message || erro);
-        res.status(500).json({ erro: "Erro ao restaurar produtos", detalhes: erro?.message });
     }
 });
 
