@@ -166,6 +166,28 @@ async function obterVendasHistorico() {
     }));
 }
 
+// Recebe os itens do carrinho [{codigo, qtd}] e calcula o total usando
+// SEMPRE o preço guardado no servidor (nunca o que vem do app).
+async function calcularTotalSeguro(itens) {
+    if (!Array.isArray(itens) || itens.length === 0) {
+        return { ok: false, erro: "Carrinho vazio ou inválido" };
+    }
+    const catalogo = await obterProdutos();
+    let total = 0;
+    for (const item of itens) {
+        const produto = catalogo.find(p => p.codigo === String(item.codigo).trim());
+        if (!produto) {
+            return { ok: false, erro: `Produto com código ${item.codigo} não encontrado` };
+        }
+        const qtd = Number(item.qtd);
+        if (!Number.isInteger(qtd) || qtd <= 0 || qtd > 100) {
+            return { ok: false, erro: `Quantidade inválida para ${produto.nome}` };
+        }
+        total += produto.preco * qtd;
+    }
+    return { ok: true, total: Math.round(total * 100) / 100 };
+}
+
 module.exports = {
     obterProdutos,
     buscarProduto,
